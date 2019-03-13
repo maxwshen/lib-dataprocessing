@@ -14,6 +14,7 @@ NAME = util.get_fn(__file__)
 out_dir = _config.OUT_PLACE + NAME + '/'
 util.ensure_dir_exists(out_dir)
 
+
 ##
 # Functions
 ##
