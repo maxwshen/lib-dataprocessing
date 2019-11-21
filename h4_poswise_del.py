@@ -20,15 +20,6 @@ exp_design = pd.read_csv(_config.DATA_DIR + 'exp_design.csv')
 ##
 # Alignment manipulations
 ##
-def detect_wildtype(read, genome):
-  ts1, ts2 = trim_start_end_dashes(read), trim_start_end_dashes(genome)
-  num_dels = len(ts1.replace('-', ' ').split()) - 1
-  num_ins = len(ts2.replace('-', ' ').split()) - 1
-  if num_dels == 0 and num_ins == 0:
-    if '-' not in ts1 and '-' not in ts2:
-      return True
-  return False
-
 def trim_start_end_dashes(seq):
   alphabet = set(list(seq))
   if '-' in alphabet:
@@ -44,10 +35,8 @@ def trim_start_end_dashes(seq):
 ##
 # Iterator
 ##
-def get_poswise_baseedits(nm, inp_place, lib_design, lib_nm, start_idx, end_idx):
+def get_poswise_dels(nm, inp_place, lib_design, lib_nm, start_idx, end_idx):
   data = dict()
-  minq = dict()
-  stats = defaultdict(list)
 
   folds = os.listdir(inp_place)
 
@@ -62,55 +51,23 @@ def get_poswise_baseedits(nm, inp_place, lib_design, lib_nm, start_idx, end_idx)
     else:
       designed_seq = row['Sequence context (61nt)']
 
-    fold_dd = defaultdict(lambda: 0)
     for fold in folds:
       inp_fn = inp_place + '%s/%s.txt' % (fold, exp)
       
       if not os.path.exists(inp_fn):
         continue
 
-      d, mq, total, unedited_ct = process_aligns(inp_fn, designed_seq, lib_nm)
+      d = process_aligns(inp_fn, designed_seq, lib_nm)
 
       if exp not in data:
         data[exp] = d
       else:
         data[exp] += d
 
-      if exp not in minq:
-        minq[exp] = mq
-      else:
-        minq[exp] = [min(q, mqq) for q, mqq in zip(minq[exp], mq)]
-
-      fold_dd['Total count'] += total
-      fold_dd['Unedited count'] += unedited_ct
-      fold_dd['Edited count'] += total - unedited_ct
-
-    stats['Name (unique)'].append(exp)
-    for col in fold_dd:
-      stats[col].append(fold_dd[col])
-
-  stats_df = pd.DataFrame(stats)
-  stats_df.to_csv(out_dir + '%s_stats_%s_%s.csv' % (nm, start_idx, end_idx))
-
   import pickle
   pkl_fn = out_dir + '%s_%s_%s.pkl' % (nm, start_idx, end_idx)
   with open(pkl_fn, 'wb') as f:
     pickle.dump(data, f)
-
-  # Remove placeholder 100s
-  for exp in minq:
-    mq = minq[exp]
-    new_mq = []
-    for qs in mq:
-      if qs != 100:
-        new_mq.append(qs)
-      else:
-        new_mq.append(0)
-    minq[exp] = new_mq
-
-  minq_fn = out_dir + '%s_minq_%s_%s.pkl' % (nm, start_idx, end_idx)
-  with open(minq_fn, 'wb') as f:
-    pickle.dump(minq, f)
 
   return
 
@@ -140,13 +97,9 @@ def process_aligns(inp_fn, designed_seq, lib_nm):
   # start_pos = -9 + offset
   # end_pos = 29 + offset + 1
 
-  total = 0
-  unedited_ct = 0
-
-  nts = list('ACGT')
+  nts = list('ACGT-')
   mapper = {nts[s]: s for s in range(len(nts))}
   d = np.zeros( (target_site_len, len(nts)) )
-  mq = [100] * target_site_len
 
   with open(inp_fn) as f:
     for i, line in enumerate(f):
@@ -158,38 +111,26 @@ def process_aligns(inp_fn, designed_seq, lib_nm):
         ref = line.strip()
 
       if i % 4 == 3:
-        if not detect_wildtype(read, ref):
-          continue
 
-        total += count
-
-        num_edits = 0
         qs = [ord(s)-33 for s in line.strip()]
-        for idx in range(start_pos, end_pos):
+        real_idx = -1 * prefix_len
+        for idx in range(len(ref)):
           # pos_nm = 'pos%s' % (idx)
           # pos_nm = 'pos%s' % (idx - offset)
-          obs_nt = read[prefix_len + idx]
-          ref_nt = ref[prefix_len + idx]
-          q = qs[prefix_len + idx]
+          obs_nt = read[idx]
+          ref_nt = ref[idx]
+          q = qs[idx]
 
-          if obs_nt == '-' or ref_nt == '-':
-            # Should be very rare in wt
+          if ref_nt == '-':
             continue
 
-          if q < 30:
-            continue
+          if real_idx >= 0 and obs_nt in mapper:
+            d[real_idx][mapper[obs_nt]] += count
 
-          d[idx][mapper[obs_nt]] += count
-          if ref_nt != obs_nt:
-            num_edits += 1
+          real_idx += 1
 
-          if q < mq[idx]:
-            mq[idx] = q
 
-        if num_edits == 0:
-          unedited_ct += count
-
-  return d, mq, total, unedited_ct
+  return d
 
 ##
 # qsub
@@ -203,8 +144,6 @@ def gen_qsubs():
 
   num_scripts = 0
   for bc in exp_design['Name']:
-    if 'Cas9' in bc:
-      continue
 
     for start_idx in range(0, 12000, 2000):
       command = 'python %s.py %s %s %s' % (NAME, bc, start_idx, start_idx + 1999)
@@ -246,7 +185,7 @@ def main(nm = '', start_idx = '', end_idx = ''):
 
   inp_dir = _config.OUT_PLACE + 'c_alignment_%s/%s/' % (lib_nm, nm)
   lib_design = pd.read_csv(_config.DATA_DIR + 'library_%s.csv' % (lib_nm))
-  get_poswise_baseedits(nm, inp_dir, lib_design, lib_nm, int(start_idx), int(end_idx))
+  get_poswise_dels(nm, inp_dir, lib_design, lib_nm, int(start_idx), int(end_idx))
 
   return
 

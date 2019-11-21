@@ -24,8 +24,10 @@ def main():
     if 'Cas9' in nm:
       continue
 
+    print(nm)
     mdf = pd.DataFrame()
     data = None
+    minq = None
     for start_idx in range(0, 12000, 2000):
       data_fn = inp_dir + '%s_%s_%s.pkl' % (nm, start_idx, start_idx + 1999)
       with open(data_fn, 'rb') as f:
@@ -36,11 +38,21 @@ def main():
           for key in temp_d:
             data[key] = temp_d[key]
 
+      minq_fn = inp_dir + '%s_minq_%s_%s.pkl' % (nm, start_idx, start_idx + 1999)
+      with open(minq_fn, 'rb') as f:
+        temp_minq = pickle.load(f)
+        if minq is None:
+          minq = temp_minq
+        else:
+          for key in temp_minq:
+            minq[key] = temp_minq[key]     
+
     # Data
     with open(inp_dir + '%s.pkl' % (nm), 'wb') as f:
       pickle.dump(data, f)
-    print('Wrote to %s.pkl' % (nm))
 
+    with open(inp_dir + '%s_minq.pkl' % (nm), 'wb') as f:
+      pickle.dump(minq, f)
 
   print('Done')
   return

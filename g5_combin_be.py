@@ -47,6 +47,7 @@ def trim_start_end_dashes(seq):
 def get_combinatorial_baseedits(nm, inp_place, lib_design, lib_nm, edit_type, start_idx, end_idx):
 
   data = dict()
+  minq = dict()
 
   folds = os.listdir(inp_place)
 
@@ -67,14 +68,21 @@ def get_combinatorial_baseedits(nm, inp_place, lib_design, lib_nm, edit_type, st
       if os.path.exists(inp_fn):
         inp_fns.append(inp_fn)
 
-    df = process_aligns(inp_fns, designed_seq, lib_nm, edit_type)
+    df, mq = process_aligns(inp_fns, designed_seq, lib_nm, edit_type)
     if df is not None:
       data[exp] = df
+
+    if mq is not None:
+      minq[exp] = mq
 
   import pickle
   pkl_fn = out_dir + '%s_%s_%s.pkl' % (nm, start_idx, end_idx)
   with open(pkl_fn, 'wb') as f:
     pickle.dump(data, f)
+
+  minq_fn = out_dir + '%s_minq_%s_%s.pkl' % (nm, start_idx, end_idx)
+  with open(minq_fn, 'wb') as f:
+    pickle.dump(minq, f)
 
   return
 
@@ -96,7 +104,7 @@ def process_aligns(inp_fns, designed_seq, lib_nm, edit_type):
   elif lib_nm == 'PAMvar':
     start_pos, end_pos = 0, 61
     target_site_len = 61
-    grna_end_pos = 30
+    grna_end_pos = 33
   elif lib_nm == 'LibA':
     start_pos, end_pos = 0, 55
     target_site_len = 55
@@ -105,13 +113,14 @@ def process_aligns(inp_fns, designed_seq, lib_nm, edit_type):
   pos0_idx = grna_end_pos - 21
 
   if edit_type == 'CtoT':
-    target_bases = ['C']
+    target_bases = ['C', 'G']
   elif edit_type == 'AtoG':
-    target_bases = ['A']
+    target_bases = ['A', 'C']
   elif edit_type == 'UT':
-    target_bases = ['C', 'A']
+    target_bases = ['C', 'G', 'A']
 
   dd = defaultdict(list)
+  mq = dict()
 
   for inp_fn in inp_fns:
     with open(inp_fn) as f:
@@ -149,16 +158,22 @@ def process_aligns(inp_fns, designed_seq, lib_nm, edit_type):
             # if len(dd[col_nm]) == 1 and max([len(dd[s]) for s in dd]) != 1:
               # import code; code.interact(local=dict(globals(), **locals()))
 
+            if q >= 30:
+              if col_nm not in mq:
+                mq[col_nm] = q
+              else:
+                mq[col_nm] = min(q, mq[col_nm])
+
           dd['Count'].append(1)
 
   if len(dd) == 0:
-    return None
+    return None, None
 
   df = pd.DataFrame(dd)
   nt_cols = [s for s in df.columns if s != 'Count']
 
   if len(nt_cols) == 0:
-    return None
+    return None, None
 
   df['Grouped count'] = df.groupby(nt_cols)['Count'].transform('sum')
   df = df.drop_duplicates(subset = nt_cols)
@@ -166,7 +181,7 @@ def process_aligns(inp_fns, designed_seq, lib_nm, edit_type):
   df = df.drop(columns = ['Grouped count'])
   df = df.sort_values(by = 'Count', ascending = False)
   df = df.reset_index()
-  return df
+  return df, mq
 
 def determine_base_editor_type(nm):
   edit_type = None

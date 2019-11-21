@@ -10,7 +10,7 @@ from mylib import util
 import pandas as pd
 
 # Default params
-inp_dir = _config.OUT_PLACE + 'g4_poswise_be/'
+inp_dir = _config.OUT_PLACE + 'h4_poswise_del/'
 NAME = util.get_fn(__file__)
 
 exp_design = pd.read_csv(_config.DATA_DIR + 'exp_design.csv')
@@ -21,8 +21,6 @@ def main():
   print(NAME)
 
   for nm in exp_design['Name']:
-    if 'Cas9' in nm:
-      continue
 
     print(nm)
     mdf = pd.DataFrame()
@@ -38,32 +36,11 @@ def main():
           for key in temp_d:
             data[key] = temp_d[key]
 
-      minq_fn = inp_dir + '%s_minq_%s_%s.pkl' % (nm, start_idx, start_idx + 1999)
-      with open(minq_fn, 'rb') as f:
-        temp_minq = pickle.load(f)
-        if minq is None:
-          minq = temp_minq
-        else:
-          for key in temp_minq:
-            minq[key] = temp_minq[key]      
-
-      # Stats
-      fn = inp_dir + '%s_stats_%s_%s.csv' % (nm, start_idx, start_idx + 1999)
-      df = pd.read_csv(fn, index_col = 0)
-      mdf = mdf.append(df, ignore_index = True)
-
     ## Write
 
     # Data
     with open(inp_dir + '%s.pkl' % (nm), 'wb') as f:
       pickle.dump(data, f)
-
-    with open(inp_dir + '%s_minq.pkl' % (nm), 'wb') as f:
-      pickle.dump(minq, f)
-
-    # Stats
-    mdf.to_csv(inp_dir + '%s_stats.csv' % (nm))
-
 
 
   print('Done')
